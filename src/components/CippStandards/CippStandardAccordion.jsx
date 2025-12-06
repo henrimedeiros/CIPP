@@ -41,6 +41,7 @@ import GDAPRoles from "/src/data/GDAPRoles";
 import timezoneList from "/src/data/timezoneList";
 import standards from "/src/data/standards.json";
 import { CippFormCondition } from "../CippComponents/CippFormCondition";
+import { CippPolicyImportDrawer } from "../CippComponents/CippPolicyImportDrawer";
 import ReactMarkdown from "react-markdown";
 
 const getAvailableActions = (disabledFeatures) => {
@@ -110,7 +111,7 @@ const CippStandardAccordion = ({
   // Watch all trackDrift values for all standards at once
   const allTrackDriftValues = useWatch({
     control: formControl.control,
-    name: Object.keys(selectedStandards).map(standardName => `${standardName}.trackDrift`)
+    name: Object.keys(selectedStandards).map((standardName) => `${standardName}.trackDrift`),
   });
 
   // Handle drift mode automatic action setting
@@ -135,11 +136,8 @@ const CippStandardAccordion = ({
 
         // Set default autoRemediate if not set
         if (currentValues.autoRemediate === undefined) {
-          formControl.setValue(`${standardName}.autoRemediate`, true);
-          formControl.setValue(`${standardName}.action`, [
-            { label: "Report", value: "Report" },
-            { label: "Remediate", value: "Remediate" },
-          ]);
+          formControl.setValue(`${standardName}.autoRemediate`, false);
+          formControl.setValue(`${standardName}.action`, [{ label: "Report", value: "Report" }]);
         }
       });
     }
@@ -241,7 +239,6 @@ const CippStandardAccordion = ({
         return;
       }
 
-      console.log("Initializing configuration state from template values");
       const initial = {};
       const initialConfigured = {};
 
@@ -285,7 +282,6 @@ const CippStandardAccordion = ({
 
     // Update configured state right away
     const isConfigured = isStandardConfigured(standardName, standard, newValues);
-    console.log(`Saving standard ${standardName}, configured: ${isConfigured}`);
 
     setConfiguredState((prev) => ({
       ...prev,
@@ -564,19 +560,37 @@ const CippStandardAccordion = ({
               selectedActions = [selectedActions];
             }
 
+            // Get template name for Intune Templates
+            let templateDisplayName = "";
+            if (standardName.startsWith("standards.IntuneTemplate")) {
+              // Check for TemplateList selection
+              const templateList = _.get(watchedValues, `${standardName}.TemplateList`);
+              if (templateList && templateList.label) {
+                templateDisplayName = templateList.label;
+              }
+              
+              // Check for TemplateList-Tags selection (takes priority)
+              const templateListTags = _.get(watchedValues, `${standardName}.TemplateList-Tags`);
+              if (templateListTags && templateListTags.label) {
+                templateDisplayName = templateListTags.label;
+              }
+            }
+            
+            // For multiple standards, check the first added component
             const selectedTemplateName = standard.multiple
               ? _.get(watchedValues, `${standardName}.${standard.addedComponent?.[0]?.name}`)
               : "";
-            const accordionTitle =
-              selectedTemplateName && _.get(selectedTemplateName, "label")
-                ? `${standard.label} - ${_.get(selectedTemplateName, "label")}`
-                : standard.label;
+            
+            // Build accordion title with template name if available
+            const accordionTitle = templateDisplayName
+              ? `${standard.label} - ${templateDisplayName}`
+              : selectedTemplateName && _.get(selectedTemplateName, "label")
+              ? `${standard.label} - ${_.get(selectedTemplateName, "label")}`
+              : standard.label;
 
             // Get current values and check if they differ from saved values
             const current = _.get(watchedValues, standardName);
             const saved = _.get(savedValues, standardName) || {};
-            console.log(`Current values for ${standardName}:`, current);
-            console.log(`Saved values for ${standardName}:`, saved);
 
             const hasUnsaved = !_.isEqual(current, saved);
 
@@ -628,8 +642,7 @@ const CippStandardAccordion = ({
 
                   // Get field value for validation using lodash's get to properly handle nested properties
                   const fieldValue = _.get(current, component.name);
-                  console.log(`Checking field: ${component.name}, value:`, fieldValue);
-                  console.log(current);
+
                   // Check if required field has a value based on its type and multiple property
                   if (component.type === "autoComplete" || component.type === "select") {
                     if (component.multiple) {
@@ -667,19 +680,15 @@ const CippStandardAccordion = ({
             // 3. There are unsaved changes
             const canSave = hasAction && requiredFieldsFilled && hasUnsaved;
 
-            console.log(
-              `Standard: ${standardName}, Action Required: ${actionRequired}, Has Action: ${hasAction}, Required Fields Filled: ${requiredFieldsFilled}, Unsaved Changes: ${hasUnsaved}, Can Save: ${canSave}`
-            );
-
             return (
               <Card key={standardName} sx={{ mb: 2 }}>
                 <Stack
                   direction="row"
                   justifyContent="space-between"
                   alignItems="center"
-                  sx={{ p: 3 }}
+                  sx={{ p: 2 }}
                 >
-                  <Stack direction="row" alignItems="center" spacing={3}>
+                  <Stack direction="row" alignItems="center" spacing={2}>
                     <Avatar>
                       {standard.cat === "Global Standards" ? (
                         <Public />
@@ -697,7 +706,7 @@ const CippStandardAccordion = ({
                     </Avatar>
                     <Stack>
                       <Typography variant="h6">{accordionTitle}</Typography>
-                      <Stack direction="row" spacing={1} sx={{ my: 0.5 }}>
+                      <Stack direction="row" spacing={1} sx={{ my: 0.25 }}>
                         {/* Hide action chips in drift mode */}
                         {!isDriftMode && selectedActions && selectedActions?.length > 0 && (
                           <>
@@ -820,6 +829,17 @@ const CippStandardAccordion = ({
                         {/* Additional components take full width */}
                         {hasAddedComponents && (
                           <>
+                            {/* Add catalog button for Intune Template standard - appears first */}
+                            {standardName.startsWith("standards.IntuneTemplate") && (
+                              <Grid size={12}>
+                                <Box sx={{ mb: 2 }}>
+                                  <CippPolicyImportDrawer
+                                    buttonText="Browse Intune Template Catalog"
+                                    mode="Intune"
+                                  />
+                                </Box>
+                              </Grid>
+                            )}
                             {standard.addedComponent?.map((component, idx) =>
                               component?.condition ? (
                                 <CippFormCondition
@@ -867,6 +887,17 @@ const CippStandardAccordion = ({
                         {hasAddedComponents && (
                           <Grid size={8}>
                             <Grid container spacing={2}>
+                              {/* Add catalog button for Intune Template standard - appears first */}
+                              {standardName.startsWith("standards.IntuneTemplate") && (
+                                <Grid size={12}>
+                                  <Box sx={{ mb: 2 }}>
+                                    <CippPolicyImportDrawer
+                                      buttonText="Browse Intune Template Catalog"
+                                      mode="Intune"
+                                    />
+                                  </Box>
+                                </Grid>
+                              )}
                               {standard.addedComponent?.map((component, idx) =>
                                 component?.condition ? (
                                   <CippFormCondition
